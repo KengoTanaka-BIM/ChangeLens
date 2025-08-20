@@ -81,3 +81,6 @@
 - Excel 出力先の変更機能
 - 差分ハイライト色のカスタマイズ
 - 複数フロアや複数モデルの一括比較
+
+## Qiitaリンク
+https://qiita.com/KengoTanaka-BIM/items/0a54b51007f6b590fcc5
