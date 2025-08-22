@@ -8,8 +8,12 @@ using DocumentFormat.OpenXml.Spreadsheet;
 
 namespace ChangeLens
 {
+
+    
+
     public static class DiffProcessor
     {
+       
         // UI対応・進捗あり差分処理
         public static List<DiffResult> RunDiffWithProgress(
             Autodesk.Revit.DB.Document newDoc,
@@ -43,9 +47,6 @@ namespace ChangeLens
                 .Where(e => e.Category != null && targetCategories.Contains((BuiltInCategory)e.Category.Id.IntegerValue))
                 .ToList();
 
-            var oldGroups = oldElems.GroupBy(e => e.GetTypeId().Value)
-                                    .ToDictionary(g => g.Key, g => g.ToList());
-
             int total = newElems.Count;
             int count = 0;
 
@@ -57,35 +58,39 @@ namespace ChangeLens
                 {
                     string status = "";
                     OverrideGraphicSettings ogs = new OverrideGraphicSettings();
-                    int typeKey = (int)e.GetTypeId().Value;
 
-                    if (!oldGroups.ContainsKey(typeKey))
-                    {
-                        // 追加
-                        SetElementColor(e, ogs, addColor, newDoc);
-                        status = "Added";
-                    }
-                    else
-                    {
-                        var candidates = oldGroups[typeKey];
-                        var foundSameLocation = candidates.FirstOrDefault(oldEl => IsSameLocation(e, oldEl));
+                    // 位置とタイプ両方が一致する要素
+                    var foundByPosition = oldElems.FirstOrDefault(oldEl =>
+                        IsSameLocation(e, oldEl) &&
+                        oldEl.GetTypeId().Value == e.GetTypeId().Value
+                    );
 
-                        if (foundSameLocation == null)
+                    // タイプだけ一致する要素（位置違い）
+                    var foundByType = oldElems.FirstOrDefault(oldEl =>
+                    oldEl.GetTypeId().Value == e.GetTypeId().Value &&
+                    !IsSameLocation(e, oldEl)  // 位置が違う場合のみ
+                    );
+
+
+                    if (foundByPosition != null)
+                    {
+                        if (IsParamChangedLimited(e, foundByPosition))
                         {
-                            // 変更
-                            SetElementColor(e, ogs, modColor, newDoc);
-                            status = "Modified";
-                        }
-                        else if (IsParamChanged(e, foundSameLocation))
-                        {
-                            // パラメータ変更
+                            // 重要パラメータ変更 → オレンジ
                             SetElementColor(e, ogs, paramColor, newDoc);
                             status = "ParamModified";
                         }
                         else
                         {
+                            // 同じ位置・同じパラメータ → 何もしない
                             continue;
                         }
+                    }
+                    else
+                    {
+                        // 追加 → 赤
+                        SetElementColor(e, ogs, addColor, newDoc);
+                        status = "Added";
                     }
 
                     newDoc.ActiveView.SetElementOverrides(e.Id, ogs);
@@ -101,6 +106,7 @@ namespace ChangeLens
                     count++;
                     progress?.Report((int)(count * 100.0 / total));
                 }
+
 
                 tx.Commit();
             }
@@ -139,14 +145,23 @@ namespace ChangeLens
             ogs.SetSurfaceForegroundPatternId(GetSolidFillPatternId(doc));
         }
 
-        private static bool IsParamChanged(Autodesk.Revit.DB.Element eNew, Autodesk.Revit.DB.Element eOld)
+        private static bool IsParamChangedLimited(Element eNew, Element eOld)
         {
+            string[] importantParams = { "Diameter", "直径", "Height", "高さ", "Width", "幅", "System Type", "システムタイプ" };
+
+            bool hasImportant = false;
+
             foreach (Autodesk.Revit.DB.Parameter pNew in eNew.Parameters)
             {
-                Autodesk.Revit.DB.Parameter pOld = eOld.LookupParameter(pNew.Definition.Name);
+                string name = pNew.Definition.Name;
+                if (!importantParams.Contains(name)) continue;
+                hasImportant = true;
+                Autodesk.Revit.DB.Parameter pOld = eOld.LookupParameter(name);
                 if (pOld != null && !ParameterEquals(pNew, pOld))
                     return true;
             }
+
+            if (!hasImportant) return false; // 重要パラメータがなければ false にする
             return false;
         }
 
@@ -155,17 +170,20 @@ namespace ChangeLens
             switch (p1.StorageType)
             {
                 case StorageType.Double:
-                    return Math.Abs(p1.AsDouble() - p2.AsDouble()) < 0.0001;
+                    double val1_mm = p1.AsDouble() * 304.8; // フィート → mm
+                    double val2_mm = p2.AsDouble() * 304.8;
+                    return Math.Abs(val1_mm - val2_mm) < 1.0; // 1mm以内は同じ
                 case StorageType.Integer:
                     return p1.AsInteger() == p2.AsInteger();
                 case StorageType.String:
-                    return p1.AsString() == p2.AsString();
+                    return (p1.AsString() ?? "") == (p2.AsString() ?? "");
                 case StorageType.ElementId:
-                    return p1.AsElementId().Value == p2.AsElementId().Value;
+                    return p1.AsElementId().IntegerValue == p2.AsElementId().IntegerValue;
                 default:
                     return true;
             }
         }
+
 
         private static ElementId GetSolidFillPatternId(Autodesk.Revit.DB.Document doc)
         {
@@ -179,10 +197,10 @@ namespace ChangeLens
         private static bool IsSameLocation(Autodesk.Revit.DB.Element e1, Autodesk.Revit.DB.Element e2)
         {
             if (e1.Location is LocationPoint lp1 && e2.Location is LocationPoint lp2)
-                return lp1.Point.IsAlmostEqualTo(lp2.Point, 0.01);
+                return lp1.Point.IsAlmostEqualTo(lp2.Point, 0.0328);
             else if (e1.Location is LocationCurve lc1 && e2.Location is LocationCurve lc2)
-                return lc1.Curve.GetEndPoint(0).IsAlmostEqualTo(lc2.Curve.GetEndPoint(0), 0.01) &&
-                       lc1.Curve.GetEndPoint(1).IsAlmostEqualTo(lc2.Curve.GetEndPoint(1), 0.01);
+                return lc1.Curve.GetEndPoint(0).IsAlmostEqualTo(lc2.Curve.GetEndPoint(0), 0.0328) &&
+　　　　　　　　　　　 lc1.Curve.GetEndPoint(1).IsAlmostEqualTo(lc2.Curve.GetEndPoint(1), 0.0328);
             return true;
         }
 
