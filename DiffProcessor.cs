@@ -141,8 +141,13 @@ namespace ChangeLens
         private static void SetElementColor(Autodesk.Revit.DB.Element e, OverrideGraphicSettings ogs, Autodesk.Revit.DB.Color color, Autodesk.Revit.DB.Document doc)
         {
             ogs.SetProjectionLineColor(color);
-            ogs.SetSurfaceForegroundPatternColor(color);
-            ogs.SetSurfaceForegroundPatternId(GetSolidFillPatternId(doc));
+            var fillId = GetSolidFillPatternId(doc);
+            if (fillId != ElementId.InvalidElementId)
+            {
+                ogs.SetSurfaceForegroundPatternColor(color);
+                ogs.SetSurfaceForegroundPatternId(fillId);
+            }
+
         }
 
         private static bool IsParamChangedLimited(Element eNew, Element eOld)
@@ -187,12 +192,14 @@ namespace ChangeLens
 
         private static ElementId GetSolidFillPatternId(Autodesk.Revit.DB.Document doc)
         {
-            return new FilteredElementCollector(doc)
+            var solidFill = new FilteredElementCollector(doc)
                 .OfClass(typeof(FillPatternElement))
                 .Cast<FillPatternElement>()
-                .First(x => x.GetFillPattern().IsSolidFill)
-                .Id;
+                .FirstOrDefault(x => x.GetFillPattern().IsSolidFill);
+
+            return solidFill != null ? solidFill.Id : ElementId.InvalidElementId;
         }
+
 
         private static bool IsSameLocation(Autodesk.Revit.DB.Element e1, Autodesk.Revit.DB.Element e2)
         {
@@ -201,7 +208,8 @@ namespace ChangeLens
             else if (e1.Location is LocationCurve lc1 && e2.Location is LocationCurve lc2)
                 return lc1.Curve.GetEndPoint(0).IsAlmostEqualTo(lc2.Curve.GetEndPoint(0), 0.0328) &&
 　　　　　　　　　　　 lc1.Curve.GetEndPoint(1).IsAlmostEqualTo(lc2.Curve.GetEndPoint(1), 0.0328);
-            return true;
+            return false; // これで比較できない要素は「別物」と判定される
+
         }
 
         public class DiffResult
@@ -215,22 +223,26 @@ namespace ChangeLens
         // 従来の簡易呼び出し
         public static void RunDiff(Autodesk.Revit.DB.Document newDoc, string oldModelPath)
         {
+            string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+            string excelPath = System.IO.Path.Combine(desktopPath, "DiffReport.xlsx");
+
             RunDiffWithProgress(
                 newDoc,
                 oldModelPath,
                 new List<BuiltInCategory>
                 {
-                    BuiltInCategory.OST_PipeCurves,
-                    BuiltInCategory.OST_DuctCurves,
-                    BuiltInCategory.OST_CableTray
+            BuiltInCategory.OST_PipeCurves,
+            BuiltInCategory.OST_DuctCurves,
+            BuiltInCategory.OST_CableTray
                 },
                 new Autodesk.Revit.DB.Color(255, 0, 0),     // 赤
                 new Autodesk.Revit.DB.Color(0, 0, 255),     // 青
                 new Autodesk.Revit.DB.Color(255, 165, 0),   // オレンジ
-                @"C:\Users\kengo.tanaka\Desktop\DiffReport.xlsx",
+                excelPath,
                 null
             );
         }
+
 
         // OpenXML で Excel 書き出し
         private static void ExportToExcel(List<DiffResult> list, string path)

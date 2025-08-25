@@ -22,48 +22,49 @@ namespace ChangeLens
             externalEvent = ExternalEvent.Create(handler);
         }
 
+        // 古いモデル選択
         private void SelectFile_Click(object sender, RoutedEventArgs e)
         {
             OpenFileDialog dlg = new OpenFileDialog
             {
                 Filter = "Revit Model (*.rvt)|*.rvt",
-                Title = "古いモデルを選択してください"
+                Title = "Please select an older model"
             };
             if (dlg.ShowDialog() == true)
             {
                 oldModelPath = dlg.FileName;
-                TxtExcelPath.Text = oldModelPath;
+                TxtExcelPath.Text = oldModelPath; // XAML 側の TextBox 名に合わせた
             }
         }
 
+        // Diff開始
         private void BtnStart_Click(object sender, RoutedEventArgs e)
         {
             if (string.IsNullOrEmpty(oldModelPath))
             {
-                MessageBox.Show("古いモデルを選択してください。");
+                MessageBox.Show("Please select an older model");
                 return;
             }
             if (RevitApp == null)
             {
-                MessageBox.Show("Revit アプリケーションがセットされていません。");
+                MessageBox.Show("The Revit application is not set.");
                 return;
             }
 
             handler.Doc = RevitApp.ActiveUIDocument.Document;
             handler.OldModelPath = oldModelPath;
-            handler.Progress = new System.Progress<int>(v => ProgressBar.Value = v);
 
             externalEvent.Raise();
+
         }
+
+
+
+        // 色リセット
         private void BtnResetColor_Click(object sender, RoutedEventArgs e)
         {
             handler.ResetColors = true;
             externalEvent.Raise();
-
-            
         }
-        
-        
-
     }
 }

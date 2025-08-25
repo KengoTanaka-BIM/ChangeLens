@@ -20,7 +20,7 @@ namespace ChangeLens
             {
                 if (Doc == null) return;
 
-                using (Transaction tx = new Transaction(Doc, "リセット:色付け解除"))
+                using (Transaction tx = new Transaction(Doc, "Reset: Uncolor"))
                 {
                     tx.Start();
 
@@ -37,7 +37,7 @@ namespace ChangeLens
                 }
 
                 ResetColors = false; // フラグを元に戻す
-                TaskDialog.Show("ChangeLens", "ビュー上の色をリセットしました。");
+                TaskDialog.Show("ChangeLens", "Reset the colors on the view.");
                 return; // ここで処理終了
             }
 
